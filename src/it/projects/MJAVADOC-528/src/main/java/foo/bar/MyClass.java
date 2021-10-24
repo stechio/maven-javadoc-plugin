@@ -19,6 +19,9 @@ package foo.bar;
  * under the License.
  */
 
+/**
+ * MyClass
+ */
 public class MyClass
 {
 }
