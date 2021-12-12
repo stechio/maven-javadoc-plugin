@@ -31,11 +31,18 @@ import org.apache.maven.model.Plugin;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.testing.AbstractMojoTestCase;
 import org.apache.maven.plugin.testing.stubs.MavenProjectStub;
+import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
+import org.apache.maven.project.ProjectBuildingRequest;
 import org.codehaus.plexus.languages.java.version.JavaVersion;
 import org.codehaus.plexus.util.FileUtils;
-import org.sonatype.aether.impl.internal.SimpleLocalRepositoryManager;
-import org.sonatype.aether.util.DefaultRepositorySystemSession;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.internal.impl.EnhancedLocalRepositoryManagerFactory;
+import org.eclipse.aether.repository.LocalRepository;
+import org.eclipse.aether.repository.NoLocalRepositoryManagerException;
+
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class AggregatorJavadocReportTest
     extends AbstractMojoTestCase
@@ -77,7 +84,9 @@ public class AggregatorJavadocReportTest
         
         MavenSession session = newMavenSession( currentProject );
         DefaultRepositorySystemSession repoSysSession = (DefaultRepositorySystemSession) session.getRepositorySession();
-        repoSysSession.setLocalRepositoryManager( new SimpleLocalRepositoryManager( localRepo ) );
+        repoSysSession.setLocalRepositoryManager(
+                new EnhancedLocalRepositoryManagerFactory().newInstance( repoSysSession,
+                        new LocalRepository( localRepo ) ) );
         setVariableValueToObject( mojo, "session", session );
 
         return mojo;
