@@ -35,7 +35,6 @@ under the License.
         <artifactId>maven-javadoc-plugin</artifactId>
         <configuration>
           <project implementation="org.apache.maven.plugins.javadoc.stubs.ExceptionTestMavenProjectStub"/>
-          <localRepository>${localRepository}</localRepository>
           <outputDirectory>exception/..  +  /target/test/unit/default-configuration/target/site/apidocs</outputDirectory>
           <breakiterator>false</breakiterator>
           <old>false</old>

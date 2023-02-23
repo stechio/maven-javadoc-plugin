@@ -40,6 +40,9 @@ import org.apache.maven.shared.invoker.MavenInvocationException;
 import org.codehaus.plexus.languages.java.version.JavaVersion;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.StringUtils;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.internal.impl.SimpleLocalRepositoryManagerFactory;
+import org.eclipse.aether.repository.LocalRepository;
 
 import static org.apache.commons.lang3.reflect.MethodUtils.invokeMethod;
 
@@ -497,6 +500,10 @@ public class FixJavadocMojoTest extends AbstractMojoTestCase {
         assertNotNull(mojo);
 
         MavenSession session = newMavenSession(mojo.getProject());
+        ((DefaultRepositorySystemSession) session.getRepositorySession())
+                .setLocalRepositoryManager(new SimpleLocalRepositoryManagerFactory()
+                        .newInstance(
+                                session.getRepositorySession(), new LocalRepository(new File("target/local-repo"))));
         // Ensure remote repo connection uses SSL
         File globalSettingsFile = new File(getBasedir(), "target/test-classes/unit/settings.xml");
         session.getRequest().setGlobalSettingsFile(globalSettingsFile);
