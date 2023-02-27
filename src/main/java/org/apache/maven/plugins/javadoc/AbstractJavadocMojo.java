@@ -143,6 +143,7 @@ import java.util.stream.Collectors;
 import static org.apache.commons.lang3.SystemUtils.isJavaVersionAtLeast;
 import static org.apache.maven.plugins.javadoc.JavadocUtil.toRelative;
 import static org.apache.maven.plugins.javadoc.JavadocUtil.toList;
+import static org.apache.maven.plugins.javadoc.JavadocUtil.getTagletClassNames;
 import static org.apache.maven.plugins.javadoc.JavadocUtil.isEmpty;
 import static org.apache.maven.plugins.javadoc.JavadocUtil.isNotEmpty;
 
@@ -5829,124 +5830,35 @@ public abstract class AbstractJavadocMojo
     private void addTagletsFromTagletArtifacts( List<String> arguments )
         throws MavenReportException
     {
-        Set<TagletArtifact> tArtifacts = new LinkedHashSet<>();
-        if ( tagletArtifacts != null && tagletArtifacts.length > 0 )
+        Set<TagletArtifact> tArtifacts = collectTagletArtifacts();
+        Collection<String> pathParts = new ArrayList<>();
+        for ( TagletArtifact tagletArtifact : tArtifacts )
         {
-            tArtifacts.addAll( Arrays.asList( tagletArtifacts ) );
-        }
-
-        if ( includeDependencySources )
-        {
-            try
+            if ( ( StringUtils.isNotEmpty( tagletArtifact.getGroupId() ) )
+                    && ( StringUtils.isNotEmpty( tagletArtifact.getArtifactId() ) )
+                    && ( StringUtils.isNotEmpty( tagletArtifact.getVersion() ) ) )
             {
-                resolveDependencyBundles();
-            }
-            catch ( IOException e )
-            {
-                throw new MavenReportException(
-                    "Failed to resolve javadoc bundles from dependencies: " + e.getMessage(), e );
-            }
-
-            if ( isNotEmpty( dependencyJavadocBundles ) )
-            {
-                for ( JavadocBundle bundle : dependencyJavadocBundles )
-                {
-                    JavadocOptions options = bundle.getOptions();
-                    if ( options != null && isNotEmpty( options.getTagletArtifacts() ) )
-                    {
-                        tArtifacts.addAll( options.getTagletArtifacts() );
-                    }
-                }
+                pathParts.addAll( getArtifactsAbsolutePath( tagletArtifact ) );
             }
         }
 
-        if ( isEmpty( tArtifacts ) )
+        List<String> tagletClasses = null;
+        try
         {
-            return;
+            tagletClasses = getTagletClassNames( pathParts );
         }
-
-        List<String> tagletsPath = new ArrayList<>();
-
-        for ( TagletArtifact aTagletArtifact : tArtifacts )
+        catch ( ClassNotFoundException | IOException ex )
         {
-            if ( ( StringUtils.isNotEmpty( aTagletArtifact.getGroupId() ) ) && ( StringUtils.isNotEmpty(
-                aTagletArtifact.getArtifactId() ) ) && ( StringUtils.isNotEmpty( aTagletArtifact.getVersion() ) ) )
-            {
-                Artifact artifact;
-                try
-                {
-                    artifact = createAndResolveArtifact( aTagletArtifact );
-                }
-                catch ( ArtifactResolverException e )
-                {
-                    throw new MavenReportException( "Unable to resolve artifact:" + aTagletArtifact, e );
-                }
-
-                tagletsPath.add( artifact.getFile().getAbsolutePath() );
-            }
+            getLog().warn( String.format( "Unable to auto-detect Taglet class names from '%s'. "
+                    + "Try to specify them with <taglets/> (Cause: %s (%s)).",
+                    pathParts, ex.getClass().getSimpleName(), ex.getMessage() ) );
         }
-
-        tagletsPath = JavadocUtil.pruneFiles( tagletsPath );
-
-        for ( String tagletJar : tagletsPath )
+        if ( !isEmpty( tagletClasses ) )
         {
-            if ( !tagletJar.toLowerCase( Locale.ENGLISH ).endsWith( ".jar" ) )
+            for ( String tagletClass : tagletClasses )
             {
-                continue;
-            }
-
-            List<String> tagletClasses;
-            try
-            {
-                tagletClasses = JavadocUtil.getTagletClassNames( new File( tagletJar ) );
-            }
-            catch ( IOException e )
-            {
-                if ( getLog().isWarnEnabled() )
-                {
-                    getLog().warn( "Unable to auto-detect Taglet class names from '" + tagletJar
-                                       + "'. Try to specify them with <taglets/>." );
-                }
-                if ( getLog().isDebugEnabled() )
-                {
-                    getLog().debug( "IOException: " + e.getMessage(), e );
-                }
-                continue;
-            }
-            catch ( ClassNotFoundException e )
-            {
-                if ( getLog().isWarnEnabled() )
-                {
-                    getLog().warn( "Unable to auto-detect Taglet class names from '" + tagletJar
-                                       + "'. Try to specify them with <taglets/>." );
-                }
-                if ( getLog().isDebugEnabled() )
-                {
-                    getLog().debug( "ClassNotFoundException: " + e.getMessage(), e );
-                }
-                continue;
-            }
-            catch ( NoClassDefFoundError e )
-            {
-                if ( getLog().isWarnEnabled() )
-                {
-                    getLog().warn( "Unable to auto-detect Taglet class names from '" + tagletJar
-                                       + "'. Try to specify them with <taglets/>." );
-                }
-                if ( getLog().isDebugEnabled() )
-                {
-                    getLog().debug( "NoClassDefFoundError: " + e.getMessage(), e );
-                }
-                continue;
-            }
-
-            if ( tagletClasses != null && !tagletClasses.isEmpty() )
-            {
-                for ( String tagletClass : tagletClasses )
-                {
-                    addArgIfNotEmpty( arguments, "-taglet", JavadocUtil.quotedArgument( tagletClass ),
-                                      SINCE_JAVADOC_1_4 );
-                }
+                addArgIfNotEmpty( arguments, "-taglet", JavadocUtil.quotedArgument( tagletClass ),
+                        SINCE_JAVADOC_1_4 );
             }
         }
     }

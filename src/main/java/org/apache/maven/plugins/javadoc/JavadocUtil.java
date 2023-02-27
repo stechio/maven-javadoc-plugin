@@ -19,9 +19,10 @@ package org.apache.maven.plugins.javadoc;
  * under the License.
  */
 
+import static org.apache.commons.io.IOUtils.closeQuietly;
+
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -30,6 +31,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Modifier;
+import java.net.MalformedURLException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -47,17 +49,18 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
-import java.util.jar.JarEntry;
-import java.util.jar.JarInputStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpHost;
@@ -105,6 +108,10 @@ import org.codehaus.plexus.util.StringUtils;
 import org.codehaus.plexus.util.cli.CommandLineException;
 import org.codehaus.plexus.util.cli.CommandLineUtils;
 import org.codehaus.plexus.util.cli.Commandline;
+
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ClassGraphException;
+import io.github.classgraph.ScanResult;
 
 /**
  * Set of utilities methods for Javadoc.
@@ -706,68 +713,83 @@ public class JavadocUtil
     }
 
     /**
-     * Auto-detect the class names of the implementation of <code>com.sun.tools.doclets.Taglet</code> class from a given
-     * jar file. <br>
-     * <b>Note</b>: <code>JAVA_HOME/lib/tools.jar</code> is a requirement to find
-     * <code>com.sun.tools.doclets.Taglet</code> class.
+     * Discovers the taglet implementations available in the given artifacts.
+     * <p>
+     * Supported taglets implement, alternatively, {@code com.sun.tools.doclets.Taglet}
+     * (legacy javadoc) or {@code jdk.javadoc.doclet.Taglet} (JDK 9+ javadoc).
+     * <code>$JAVA_HOME/lib/tools.jar</code> is required for legacy javadoc.
+     * </p>
      *
-     * @param jarFile not null
-     * @return the list of <code>com.sun.tools.doclets.Taglet</code> class names from a given jarFile.
-     * @throws IOException if jarFile is invalid or not found, or if the <code>JAVA_HOME/lib/tools.jar</code> is not
-     *             found.
-     * @throws ClassNotFoundException if any
-     * @throws NoClassDefFoundError if any
+     * @param jarPaths Artifacts to scan for taglets.
+     * @return List of taglet class names from the given artifacts.
+     * @throws ClassNotFoundException
+     * @throws IOException
      */
-    protected static List<String> getTagletClassNames( File jarFile )
-        throws IOException, ClassNotFoundException, NoClassDefFoundError
+    static List<String> getTagletClassNames( Collection<String> jarPaths )
+            throws ClassNotFoundException, IOException
     {
-        List<String> classes = getClassNamesFromJar( jarFile );
-        URLClassLoader cl;
-
-        // Needed to find com.sun.tools.doclets.Taglet class
+        Collection<URL> urls = jarPaths.stream()
+                .filter( $ -> $.toLowerCase( Locale.ROOT ).endsWith( ".jar" ) )
+                .map( $ ->
+                {
+                    try
+                    {
+                        return new File( $ ).toURI().toURL();
+                    }
+                    catch ( MalformedURLException ex )
+                    {
+                        throw new RuntimeException( ex );
+                    }
+                } )
+                .collect( Collectors.toCollection( () -> new HashSet<>() ) );
+        if ( urls.isEmpty() )
+        {
+            return List.of();
+        }
         File tools = new File( System.getProperty( "java.home" ), "../lib/tools.jar" );
-        if ( tools.exists() && tools.isFile() )
+        if ( tools.isFile() )
         {
-            cl = new URLClassLoader( new URL[] { jarFile.toURI().toURL(), tools.toURI().toURL() }, null );
-        }
-        else
-        {
-            cl = new URLClassLoader( new URL[] { jarFile.toURI().toURL() }, ClassLoader.getSystemClassLoader() );
-        }
-
-        List<String> tagletClasses = new ArrayList<>();
-
-        Class<?> tagletClass;
-
-        try
-        {
-            tagletClass = cl.loadClass( "com.sun.tools.doclets.Taglet" );
-        }
-        catch ( ClassNotFoundException e )
-        {
-            tagletClass = cl.loadClass( "jdk.javadoc.doclet.Taglet" );
-        }
-
-        for ( String s : classes )
-        {
-            Class<?> c = cl.loadClass( s );
-
-            if ( tagletClass.isAssignableFrom( c ) && !Modifier.isAbstract( c.getModifiers() ) )
+            try
             {
-                tagletClasses.add( c.getName() );
+                urls.add( tools.toURI().toURL() );
+            }
+            catch ( MalformedURLException ex )
+            {
+                throw new RuntimeException( ex );
             }
         }
-        
+        URLClassLoader cl = new URLClassLoader( urls.toArray( URL[]::new ) );
+
         try
         {
-            cl.close();
+            Class<?> tagletClass;
+            try
+            {
+                tagletClass = cl.loadClass( "com.sun.tools.doclets.Taglet" );
+            }
+            catch ( ClassNotFoundException e )
+            {
+                tagletClass = cl.loadClass( "jdk.javadoc.doclet.Taglet" );
+            }
+
+            try ( ScanResult scanResult = new ClassGraph().enableClassInfo().addClassLoader( cl )
+                    .scan() )
+            {
+                return scanResult.getClassesImplementing( tagletClass ).stream()
+                        .map( $ -> $.loadClass() )
+                        .filter( $ -> !Modifier.isAbstract( $.getModifiers() ) )
+                        .map( Class::getName )
+                        .collect( Collectors.toList() );
+            } 
+            catch ( ClassGraphException ex )
+            {
+                throw new IOException( "Taglet path scanning failed", ex );
+            }
         }
-        catch ( IOException ex )
+        finally
         {
-            // no big deal
+            closeQuietly( cl );
         }
-        
-        return tagletClasses;
     }
 
     /**
@@ -1001,46 +1023,6 @@ public class JavadocUtil
     // ----------------------------------------------------------------------
     // private methods
     // ----------------------------------------------------------------------
-
-    /**
-     * @param jarFile not null
-     * @return all class names from the given jar file.
-     * @throws IOException if any or if the jarFile is null or doesn't exist.
-     */
-    private static List<String> getClassNamesFromJar( File jarFile )
-        throws IOException
-    {
-        if ( jarFile == null || !jarFile.exists() || !jarFile.isFile() )
-        {
-            throw new IOException( "The jar '" + jarFile + "' doesn't exist or is not a file." );
-        }
-
-        List<String> classes = new ArrayList<>();
-        Pattern pattern =
-            Pattern.compile( "(?i)^(META-INF/versions/(?<v>[0-9]+)/)?(?<n>.+)[.]class$" );
-        try ( JarInputStream jarStream = new JarInputStream( new FileInputStream( jarFile ) ) )
-        {
-            for ( JarEntry jarEntry = jarStream.getNextJarEntry(); jarEntry != null; jarEntry =
-                jarStream.getNextJarEntry() )
-            {
-                Matcher matcher = pattern.matcher( jarEntry.getName() );
-                if ( matcher.matches() )
-                {
-                    String version = matcher.group( "v" );
-                    if ( StringUtils.isEmpty( version ) || JavaVersion.JAVA_VERSION.isAtLeast( version ) )
-                    {
-                        String name = matcher.group( "n" );
-
-                        classes.add( name.replaceAll( "/", "\\." ) );
-                    }
-                }
-
-                jarStream.closeEntry();
-            }
-        }
-
-        return classes;
-    }
 
     /**
      * @param log could be null

@@ -164,6 +164,14 @@ public class JavadocReportTest
         copyDirectory( sourceDir.toFile(), localRepo );
 
         // ----------------------------------------------------------------------
+        // tagletArtifacts-jdk9-test
+        // ----------------------------------------------------------------------
+
+        sourceDir = unit.resolve( "tagletArtifacts-jdk9-test/artifact" );
+        assertThat( sourceDir ).exists();
+        copyDirectory( sourceDir.toFile(), localRepo );
+
+        // ----------------------------------------------------------------------
         // stylesheetfile-test
         // ----------------------------------------------------------------------
 
@@ -1214,6 +1222,49 @@ public class JavadocReportTest
                 .contains( "org.codehaus.plexus.javadoc.PlexusConfigurationTaglet" )
                 .contains( "org.codehaus.plexus.javadoc.PlexusRequirementTaglet" )
                 .contains( "org.codehaus.plexus.javadoc.PlexusComponentTaglet" );
+    }
+
+    /**
+     * Method to test the <code>&lt;tagletArtifacts/&gt;</code> parameter.
+     *
+     * @throws Exception if any
+     */
+    public void testTagletArtifactsJdk9()
+        throws Exception
+    {
+        /*
+         * NOTE: jdk.javadoc.doclet.Taglet not supported before Java 9.
+         */
+        if ( JavaVersion.JAVA_SPECIFICATION_VERSION.isBefore( "9" ) )
+        {
+            return;
+        }
+
+        Path testPom = unit.resolve( "tagletArtifacts-jdk9-test/tagletArtifacts-jdk9-test-plugin-config.xml" );
+        JavadocReport mojo = lookupMojo( testPom );
+
+        MavenSession session = spy( newMavenSession( mojo.project ) );
+        ProjectBuildingRequest buildingRequest = mock( ProjectBuildingRequest.class );
+        when( buildingRequest.getRemoteRepositories() ).thenReturn( mojo.project.getRemoteArtifactRepositories() );
+        when( session.getProjectBuildingRequest() ).thenReturn( buildingRequest );
+        DefaultRepositorySystemSession repositorySession = new DefaultRepositorySystemSession();
+        repositorySession.setLocalRepositoryManager( new SimpleLocalRepositoryManagerFactory().newInstance( repositorySession, new LocalRepository( localRepo ) ) );
+        when( buildingRequest.getRepositorySession() ).thenReturn( repositorySession );
+        when( session.getRepositorySession() ).thenReturn( repositorySession );
+        LegacySupport legacySupport = lookup( LegacySupport.class );
+        legacySupport.setSession( session );
+        setVariableValueToObject( mojo, "session", session );
+
+        mojo.execute();
+
+        Path optionsFile = new File( mojo.getOutputDirectory(), "options" ).toPath();
+        assertThat( optionsFile ).exists();
+        String options = readFile( optionsFile );
+        // count -taglet
+        assertThat( StringUtils.countMatches( options, LINE_SEPARATOR + "-taglet" + LINE_SEPARATOR ) ).isEqualTo( 2 );
+        assertThat( options )
+                .contains( "test.maven.javadoc.plugin.taglets.jdk9.impl.RefTaglet" )
+                .contains( "test.maven.javadoc.plugin.taglets.jdk9.impl.TodoTaglet" );
     }
 
     /**
