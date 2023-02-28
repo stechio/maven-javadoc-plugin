@@ -5830,15 +5830,24 @@ public abstract class AbstractJavadocMojo
     private void addTagletsFromTagletArtifacts( List<String> arguments )
         throws MavenReportException
     {
+        /*
+         * NOTE: Taglet auto-detection encompasses all related artifacts but the one for manual
+         * taglet selection.
+         */
         Set<TagletArtifact> tArtifacts = collectTagletArtifacts();
-        Collection<String> pathParts = new ArrayList<>();
-        for ( TagletArtifact tagletArtifact : tArtifacts )
+        if ( tagletArtifact != null )
         {
-            if ( ( StringUtils.isNotEmpty( tagletArtifact.getGroupId() ) )
-                    && ( StringUtils.isNotEmpty( tagletArtifact.getArtifactId() ) )
-                    && ( StringUtils.isNotEmpty( tagletArtifact.getVersion() ) ) )
+            tArtifacts.remove( tagletArtifact );
+        }
+
+        Set<String> pathParts = new LinkedHashSet<>();
+        for ( TagletArtifact tArtifact : tArtifacts )
+        {
+            if ( ( StringUtils.isNotEmpty( tArtifact.getGroupId() ) )
+                    && ( StringUtils.isNotEmpty( tArtifact.getArtifactId() ) )
+                    && ( StringUtils.isNotEmpty( tArtifact.getVersion() ) ) )
             {
-                pathParts.addAll( getArtifactsAbsolutePath( tagletArtifact ) );
+                pathParts.addAll( getArtifactsAbsolutePath( tArtifact ) );
             }
         }
 
