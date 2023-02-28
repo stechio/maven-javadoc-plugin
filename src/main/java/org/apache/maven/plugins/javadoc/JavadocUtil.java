@@ -19,8 +19,6 @@ package org.apache.maven.plugins.javadoc;
  * under the License.
  */
 
-import static org.apache.commons.io.IOUtils.closeQuietly;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -746,6 +744,7 @@ public class JavadocUtil
         {
             return List.of();
         }
+
         File tools = new File( System.getProperty( "java.home" ), "../lib/tools.jar" );
         if ( tools.isFile() )
         {
@@ -758,9 +757,8 @@ public class JavadocUtil
                 throw new RuntimeException( ex );
             }
         }
-        URLClassLoader cl = new URLClassLoader( urls.toArray( URL[]::new ) );
 
-        try
+        try ( URLClassLoader cl = new URLClassLoader( urls.toArray( URL[]::new ) ) )
         {
             Class<?> tagletClass;
             try
@@ -785,10 +783,6 @@ public class JavadocUtil
             {
                 throw new IOException( "Taglet path scanning failed", ex );
             }
-        }
-        finally
-        {
-            closeQuietly( cl );
         }
     }
 
