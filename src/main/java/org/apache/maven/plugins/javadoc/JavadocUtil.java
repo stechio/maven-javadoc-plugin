@@ -47,7 +47,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -747,7 +746,7 @@ public class JavadocUtil
                                 String.format( "jarPaths element: '%s'", jarFile ), ex );
                     }
                 } )
-                .collect( Collectors.toCollection( () -> new HashSet<>() ) );
+                .collect( Collectors.toCollection( () -> new LinkedHashSet<>() ) );
         if ( urls.isEmpty() )
         {
             return List.of();
@@ -756,14 +755,7 @@ public class JavadocUtil
         File tools = new File( System.getProperty( "java.home" ), "../lib/tools.jar" );
         if ( tools.isFile() )
         {
-            try
-            {
-                urls.add( tools.toURI().toURL() );
-            }
-            catch ( MalformedURLException ex )
-            {
-                throw new IOException( ex );
-            }
+            urls.add( tools.toURI().toURL() );
         }
 
         try ( URLClassLoader cl = new URLClassLoader( urls.toArray( URL[]::new ) ) )
