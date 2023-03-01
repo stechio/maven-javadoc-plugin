@@ -730,13 +730,21 @@ public class JavadocUtil
                 .filter( $ -> $.toLowerCase( Locale.ROOT ).endsWith( ".jar" ) )
                 .map( $ ->
                 {
+                    File jarFile = new File( $ );
+                    if ( !jarFile.isFile() )
+                    {
+                        throw new IllegalArgumentException(
+                                String.format( "jarPaths element: '%s' (not a file)", jarFile ) );
+                    }
+
                     try
                     {
-                        return new File( $ ).toURI().toURL();
+                        return jarFile.toURI().toURL();
                     }
                     catch ( MalformedURLException ex )
                     {
-                        throw new RuntimeException( ex );
+                        throw new IllegalArgumentException(
+                                String.format( "jarPaths element: '%s'", jarFile ), ex );
                     }
                 } )
                 .collect( Collectors.toCollection( () -> new HashSet<>() ) );
@@ -754,7 +762,7 @@ public class JavadocUtil
             }
             catch ( MalformedURLException ex )
             {
-                throw new RuntimeException( ex );
+                throw new IOException( ex );
             }
         }
 
